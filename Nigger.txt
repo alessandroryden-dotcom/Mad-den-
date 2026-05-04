@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Block Dash Refined</title>
+    <style>
+        body { margin: 0; background: #1a1a1a; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; }
+        #container { position: relative; border-radius: 10px; overflow: hidden; box-shadow: 0 0 50px rgba(0,0,0,0.8); }
+        canvas { display: block; background: #2c3e50; }
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; padding: 20px; box-sizing: border-box; pointer-events: none; display: flex; justify-content: space-between; }
+        .stat-box { background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 8px; border-left: 4px solid #00ffcc; }
+        #center-msg { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; font-size: 40px; font-weight: 900; text-shadow: 2px 2px 10px rgba(0,0,0,1); color: #fff; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+    <div id="container">
+        <div class="ui-layer">
+            <div class="stat-box">STAGE: <span id="stageNum">1</span></div>
+            <div class="stat-box">LIVES: <span id="lives">3</span></div>
+        </div>
+        <div id="center-msg"></div>
+        <canvas id="game"></canvas>
+    </div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const msgDisplay = document.getElementById("center-msg");
+
+canvas.width = 900;
+canvas.height = 450;
+
+// Game State
+let gameState = {
+    stage: 1,
+    lives: 3,
+    active: true,
+    frame: 0,
+    score: 0
+};
+
+// Player Object
+const player = {
+    x: 100, y: 300, w: 40, h: 40,
+    dy: 0, 
+    jumpForce: 10, 
+    gravity: 0.5,
+    jumps: 0,
+    maxJumps: 2, // Fitur Double Jump
+    color: "#00ffcc",
+    isInvincible: false
+};
+
+const stages = {
+    1: { speed: 6, freq: 90, floor: "#27ae60", name: "BEGINNER" },
+    2: { speed: 8, freq: 70, floor: "#2980b9", name: "INTERMEDIATE" },
+    3: { speed: 11, freq: 50, floor: "#8e44ad", name: "EXPERT" },
+    4: { speed: 14, freq: 40, floor: "#c0392b", name: "INSANE" }
+};
+
+let obstacles = [];
+let particles = [];
+
+// Input
+function handleJump() {
+    if (gameState.active && player.jumps < player.maxJumps) {
+        player.dy = -player.jumpForce;
+        player.jumps++;
+    }
+}
+
+window.addEventListener("keydown", (e) => { if (e.code === "Space") handleJump(); });
+canvas.addEventListener("mousedown", handleJump);
+
+function createExplosion(x, y, color) {
+    for (let i = 0; i < 10; i++) {
+        particles.push({
+            x: x, y: y,
+            vx: (Math.random() - 0.5) * 10,
+            vy: (Math.random() - 0.5) * 10,
+            life: 20,
+            color: color
+        });
+    }
+}
+
+function update() {
+    if (!gameState.active) return;
+
+    // Player Physics
+    player.dy += player.gravity;
+    player.y += player.dy;
+
+    // Floor Collision
+    if (player.y + player.h > 400) {
+        player.y = 400 - player.h;
+        player.dy = 0;
+        player.jumps = 0;
+    }
+
+    // Spawn Obstacles
+    gameState.frame++;
+    let current = stages[gameState.stage];
+    if (gameState.frame % current.freq === 0) {
+        let isHigh = Math.random() > 0.6;
+        obstacles.push({
+            x: canvas.width,
+            y: isHigh ? 280 : 360,
+            w: 30,
+            h: 40,
+            color: "#fff"
+        });
+    }
+
+    // Move Obstacles
+    obstacles.forEach((obs, i) => {
+        obs.x -= current.speed;
+
+        // Collision
+        if (!player.isInvincible && 
+            player.x < obs.x + obs.w && player.x + player.w > obs.x &&
+            player.y < obs.y + obs.h && player.y + player.h > obs.y) {
+            
+            gameState.lives--;
+            createExplosion(player.x, player.y, player.color);
+            document.getElementById("lives").innerText = gameState.lives;
+            
+            // Invincibility frame singkat biar tidak langsung mati beruntun
+            player.isInvincible = true;
+            setTimeout(() => player.isInvincible = false, 1000);
+
+            if (gameState.lives <= 0) {
+                gameState.active = false;
+                msgDisplay.innerText = "GAME OVER";
+                msgDisplay.style.color = "#ff4444";
+            }
+        }
+
+        if (obs.x + obs.w < 0) obstacles.splice(i, 1);
+    });
+
+    // Handle Particles
+    particles.forEach((p, i) => {
+        p.x += p.vx; p.y += p.vy; p.life--;
+        if (p.life <= 0) particles.splice(i, 1);
+    });
+
+    // Progress Stage
+    if (gameState.frame > 800 && gameState.stage < 4) {
+        gameState.stage++;
+        gameState.frame = 0;
+        document.getElementById("stageNum").innerText = gameState.stage;
+        msgDisplay.innerText = stages[gameState.stage].name;
+        setTimeout(() => msgDisplay.innerText = "", 1500);
+    } else if (gameState.stage === 4 && gameState.frame > 1200) {
+        gameState.active = false;
+        msgDisplay.innerText = "YOU WIN!";
+        msgDisplay.style.color = "#00ffcc";
+    }
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Background Floor
+    ctx.fillStyle = stages[gameState.stage].floor;
+    ctx.fillRect(0, 400, canvas.width, 50);
+
+    // Draw Player
+    if (!player.isInvincible || gameState.frame % 10 < 5) {
+        ctx.fillStyle = player.color;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = player.color;
+        ctx.fillRect(player.x, player.y, player.w, player.h);
+        ctx.shadowBlur = 0;
+    }
+
+    // Draw Obstacles
+    ctx.fillStyle = "white";
+    obstacles.forEach(obs => {
+        ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+    });
+
+    // Draw Particles
+    particles.forEach(p => {
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x, p.y, 4, 4);
+    });
+
+    update();
+    requestAnimationFrame(draw);
+}
+
+draw();
+</script>
+</body>
+</html>
